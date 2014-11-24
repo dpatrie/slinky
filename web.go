@@ -21,16 +21,7 @@ var db gorm.DB
 
 func main() {
 	db = setupDb()
-
-	db.DB().Ping()
-
-	http.Handle("/", setupHTTP())
-
-	bind := fmt.Sprintf("%s:%s", os.Getenv("HOST"), os.Getenv("PORT"))
-	fmt.Printf("Listening on %s...\n\n", bind)
-	if err := http.ListenAndServe(bind, nil); err != nil {
-		log.Fatal(err)
-	}
+	serveHTTP()
 }
 
 func setupDb() gorm.DB {
@@ -52,61 +43,75 @@ func setupDb() gorm.DB {
 	return db
 }
 
-func setupHTTP() http.Handler {
+func serveHTTP() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/urls", postUrls).Methods("POST").Headers("Content-Type", "application/json")
 	r.HandleFunc("/urls/{key}", getUrls).Methods("GET")
 
-	return handlers.CombinedLoggingHandler(os.Stdout, r)
+	http.Handle("/", handlers.CombinedLoggingHandler(os.Stdout, r))
+	bind := fmt.Sprintf("%s:%s", os.Getenv("HOST"), os.Getenv("PORT"))
+	fmt.Printf("Listening on %s...\n\n", bind)
+	if err := http.ListenAndServe(bind, nil); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func postUrls(w http.ResponseWriter, req *http.Request) {
 	u := Url{}
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		http.Error(w, "Server error", http.StatusBadRequest)
 		log.Printf("ERROR: %s\n", err)
+		http.Error(w, "Server error", http.StatusInternalServerError)
+		return
 	}
 	err = json.Unmarshal(body, &u)
 	if err != nil {
-		http.Error(w, "Server error", http.StatusBadRequest)
 		log.Printf("ERROR: %s\n", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
 	}
 
-	newURL := &Url{
+	newURL := Url{
 		Href: u.Href,
 	}
 
-	db.Save(&newURL)
-
-	out, err := json.Marshal(newURL)
-	if err != nil {
-		http.Error(w, "Server error", http.StatusBadRequest)
+	if err = db.Save(&newURL).Error; err != nil {
 		log.Printf("ERROR: %s\n", err)
+		http.Error(w, "Server error", http.StatusInternalServerError)
+		return
 	}
-	fmt.Fprintf(w, "%s", out)
+
+	log.Printf("/urls/%s", newURL.Key)
+	http.Redirect(w, req, fmt.Sprintf("/urls/%s", newURL.Key), http.StatusSeeOther)
 }
 
 func getUrls(w http.ResponseWriter, req *http.Request) {
-	fmt.Fprint(w, "Hello GET")
+	vars := mux.Vars(req)
+	u := Url{}
+
+	if db.Where("key = ?", vars["key"]).First(&u).RecordNotFound() {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	out, _ := json.Marshal(u)
+	fmt.Fprintf(w, "%s", out)
 }
 
 //Url Model
 type Url struct {
-	Id        int64
-	Href      string
-	Key       string `sql:"size:32"`
-	Vote      int64
+	Id        int64  `json:"-"`
+	Key       string `sql:"size:32;not null;unique"`
+	Href      string `sql:"not null;unique"`
+	View      int64
 	Score     int64
-	AvgScore  float64 `sql:"-"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt time.Time
+	DeletedAt time.Time `json:"-"`
 }
 
 func (u *Url) BeforeCreate() error {
-	u.Key = GetMD5Hash(fmt.Sprintf("%s-%d", u.Href, time.Now().Unix()))
+	u.Key = GetMD5Hash(u.Href)
 	return nil
 }
 
