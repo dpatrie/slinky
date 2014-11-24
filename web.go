@@ -25,7 +25,7 @@ func main() {
 }
 
 func setupDb() gorm.DB {
-	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable",
+	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?connect_timeout=2",
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_USERNAME"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_PASSWORD"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_HOST"),
@@ -90,8 +90,13 @@ func getUrls(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	u := Url{}
 
-	if db.Where("key = ?", vars["key"]).First(&u).RecordNotFound() {
-		http.Error(w, "Not Found", http.StatusNotFound)
+	q := db.Where("key = ?", vars["key"]).First(&u)
+	if q.RecordNotFound() {
+		http.Error(w, "404 Not Found", http.StatusNotFound)
+		return
+	} else if q.Error != nil {
+		log.Printf("ERROR: %s\n", q.Error)
+		http.Error(w, "Server error", http.StatusInternalServerError)
 		return
 	}
 	out, _ := json.Marshal(u)
