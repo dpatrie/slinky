@@ -25,14 +25,22 @@ func main() {
 }
 
 func setupDb() gorm.DB {
-	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?connect_timeout=2",
+	// dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?connect_timeout=2&sslmode=disable",
+	// 	os.Getenv("OPENSHIFT_POSTGRESQL_DB_USERNAME"),
+	// 	os.Getenv("OPENSHIFT_POSTGRESQL_DB_PASSWORD"),
+	// 	os.Getenv("OPENSHIFT_POSTGRESQL_DB_HOST"),
+	// 	os.Getenv("OPENSHIFT_POSTGRESQL_DB_PORT"),
+	// 	os.Getenv("OPENSHIFT_POSTGRESQL_DB"),
+	// )
+
+	dsn := fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s connect_timeout=2 sslmode=disable",
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_USERNAME"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_PASSWORD"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_HOST"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB_PORT"),
 		os.Getenv("OPENSHIFT_POSTGRESQL_DB"),
 	)
-	log.Printf("Using %s", dsn)
+	// log.Printf("Using %s", dsn)
 	db, err := gorm.Open("postgres", dsn)
 	if err != nil {
 		log.Fatalf("Failed to initialize DB: %s", err)
